@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulation Dashboard</title>
+    <style>
+        :root {
+            --bg-color: #030712;
+            --surface: #1e293b;
+            --primary: #3b82f6;
+            --endless: #8b5cf6;
+            --text: #f8fafc;
+        }
+        body {
+            margin: 0; background-color: var(--bg-color); color: var(--text);
+            font-family: 'Segoe UI', Roboto, sans-serif;
+            display: flex; justify-content: center; align-items: center; height: 100vh;
+        }
+        .dashboard {
+            background: var(--surface); padding: 50px; border-radius: 12px;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,0.8); text-align: center;
+            border: 2px solid #334155;
+        }
+        h1 { font-size: 3rem; margin-bottom: 10px; letter-spacing: 2px; text-transform: uppercase; }
+        p { color: #94a3b8; margin-bottom: 40px; font-size: 1.2rem; }
+        .button-group { display: flex; gap: 20px; justify-content: center; }
+        a {
+            text-decoration: none; color: white; padding: 16px 32px;
+            font-size: 1.2rem; font-weight: bold; border-radius: 8px;
+            transition: transform 0.2s, filter 0.2s; text-transform: uppercase;
+        }
+        a:hover { filter: brightness(1.2); transform: translateY(-2px); }
+        .btn-campaign { background-color: var(--primary); }
+        .btn-unlimited { background-color: var(--endless); }
+    </style>
+</head>
+<body>
+    <div class="dashboard">
+        <h1>Highway Run</h1>
+        <p>Select your simulation protocol.</p>
+        <div class="button-group">
+            <a href="levels.html" class="btn-campaign">Levels Mode</a>
+            <a href="unlimited.html" class="btn-unlimited">Unlimited Mode</a>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unlimited Mode</title>
+    <style>
+        body {
+            margin: 0; background-color: #030712; color: #f8fafc;
+            font-family: 'Segoe UI', sans-serif; display: flex; 
+            justify-content: center; align-items: center; min-height: 100vh; padding: 20px 0; box-sizing: border-box;
+        }
+        #game-wrapper { position: relative; }
+        
+        #hud {
+            position: absolute; top: 15px; left: 15px; right: 15px;
+            display: flex; justify-content: space-between; z-index: 100;
+        }
+        .hud-stat {
+            background: rgba(15, 23, 42, 0.85); padding: 10px 20px; 
+            border-radius: 6px; border: 1px solid #8b5cf6; font-size: 1.4rem; font-weight: bold;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+        }
+        .highlight { color: #fbbf24; font-size: 1.6rem;}
+
+        canvas {
+            display: block; border-radius: 8px; border: 4px solid #1e293b;
+            box-shadow: 0 25px 50px -12px rgba(0,0,0,1); background-color: #111827;
+        }
+
+        .overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(15, 23, 42, 0.95); display: flex; flex-direction: column;
+            justify-content: center; align-items: center; border-radius: 8px;
+            opacity: 0; pointer-events: none; transition: opacity 0.3s; z-index: 200;
+        }
+        .overlay.active { opacity: 1; pointer-events: all; }
+        h1 { font-size: 2.5rem; margin-bottom: 10px; text-transform: uppercase; text-align: center;}
+        
+        .final-score { font-size: 2rem; color: #fbbf24; margin-bottom: 20px; background: rgba(0,0,0,0.5); padding: 10px 20px; border-radius: 8px; }
+        
+        button, .btn-link {
+            background-color: #8b5cf6; color: white; border: none; padding: 14px 28px;
+            font-size: 1.1rem; font-weight: bold; border-radius: 6px; cursor: pointer;
+            margin-top: 15px; text-decoration: none; text-align: center; display: inline-block;
+        }
+        button:hover, .btn-link:hover { background-color: #7c3aed; }
+    </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+    <!-- Static HUD layer showing live score -->
+    <div id="hud">
+        <div class="hud-stat">MODE: <span style="color:#8b5cf6">ENDLESS</span></div>
+        <div class="hud-stat">SCORE: <span id="score-display" class="highlight">0</span></div>
+    </div>
+
+    <canvas id="gameCanvas" width="480" height="650"></canvas>
+
+    <!-- Overlays -->
+    <div id="lose-screen" class="overlay">
+        <h1 style="color: #ef4444;">SIMULATION OVER</h1>
+        <div class="final-score" id="final-score-text">Final Score: 0</div>
+        <button onclick="startGame()">Restart Simulation</button>
+        <a href="index.html" class="btn-link" style="background-color: #475569;">Dashboard</a>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    const overlays = { lose: document.getElementById('lose-screen') };
+    const displays = { score: document.getElementById('score-display'), final: document.getElementById('final-score-text') };
+
+    const assets = { car: new Image(), barrier: new Image(), gift: new Image() };
+    assets.car.src = 'car.png'; assets.barrier.src = 'barrier.png'; assets.gift.src = 'gift.png';
+
+    let currentConfig = { roadSpeed: 450, barrierSpawnTime: 1.2 };
+    let animationId, gameState = 'PLAYING', score = 0, lastTime = performance.now(), lineOffset = 0;
+    let barriers = [], gifts = [], particles = [], barrierTimer = 0, giftTimer = 0;
+
+    const keys = { ArrowLeft: false, ArrowRight: false, a: false, d: false };
+    window.addEventListener('keydown', e => { if (keys.hasOwnProperty(e.key)) keys[e.key] = true; });
+    window.addEventListener('keyup', e => { if (keys.hasOwnProperty(e.key)) keys[e.key] = false; });
+
+    const car = {
+        x: 210, y: 520, width: 60, height: 110, speed: 550,
+        update(dt) {
+            if ((keys.ArrowLeft || keys.a) && this.x > 20) this.x -= this.speed * dt;
+            if ((keys.ArrowRight || keys.d) && this.x + this.width < canvas.width - 20) this.x += this.speed * dt;
+        },
+        draw() {
+            if (assets.car.complete && assets.car.naturalWidth > 0) ctx.drawImage(assets.car, this.x, this.y, this.width, this.height);
+            else { ctx.fillStyle = '#3b82f6'; ctx.fillRect(this.x, this.y, this.width, this.height); }
+        }
+    };
+
+    class Obstacle {
+        constructor(type) {
+            this.type = type; this.width = type === 'barrier' ? 70 : 40; this.height = type === 'barrier' ? 40 : 40;
+            const lanes = [60, 180, 300, 420];
+            this.x = lanes[Math.floor(Math.random() * lanes.length)] - this.width/2;
+            this.y = -100; this.active = true;
+        }
+        update(dt) { this.y += currentConfig.roadSpeed * dt; if (this.y > canvas.height) this.active = false; }
+        draw() {
+            if (this.type === 'barrier' && assets.barrier.complete) ctx.drawImage(assets.barrier, this.x, this.y, this.width, this.height);
+            else if (this.type === 'gift' && assets.gift.complete) ctx.drawImage(assets.gift, this.x, this.y, this.width, this.height);
+            else { ctx.fillStyle = this.type === 'barrier' ? '#ef4444' : '#fbbf24'; ctx.fillRect(this.x, this.y, this.width, this.height); }
+        }
+    }
+
+    class Particle {
+        constructor(x, y) {
+            this.x = x; this.y = y; this.vx = (Math.random() - 0.5) * 500; this.vy = (Math.random() - 0.5) * 500; this.life = 1.0;
+        }
+        update(dt) { this.x += this.vx * dt; this.y += this.vy * dt; this.life -= dt * 1.5; }
+        draw() { ctx.fillStyle = `rgba(251, 191, 36, ${Math.max(0, this.life)})`; ctx.beginPath(); ctx.arc(this.x, this.y, 5, 0, Math.PI * 2); ctx.fill(); }
+    }
+
+    function checkCollision(rect1, rect2) {
+        const margin = 12;
+        return (rect1.x + margin < rect2.x + rect2.width - margin && rect1.x + rect1.width - margin > rect2.x + margin && rect1.y + margin < rect2.y + rect2.height - margin && rect1.y + rect1.height - margin > rect2.y + margin);
+    }
+
+    function setOverlay(el) { overlays.lose.classList.remove('active'); if(el) el.classList.add('active'); }
+
+    function startGame() {
+        score = 0; displays.score.innerText = score;
+        currentConfig = { roadSpeed: 450, barrierSpawnTime: 1.2 };
+        car.x = 210; barriers = []; gifts = []; particles = [];
+        lastTime = performance.now(); gameState = 'PLAYING';
+        setOverlay(null); requestAnimationFrame(loop);
+    }
+
+    function loop(timestamp) {
+        if (gameState !== 'PLAYING') return;
+        const dt = (timestamp - lastTime) / 1000; lastTime = timestamp;
+
+        // Mathematical Difficulty Scaling
+        currentConfig.roadSpeed += dt * 5;
+        currentConfig.barrierSpawnTime = Math.max(0.35, currentConfig.barrierSpawnTime - (dt * 0.005));
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        lineOffset = (lineOffset + currentConfig.roadSpeed * dt) % 80;
+        ctx.fillStyle = '#94a3b8';
+        for (let i = 1; i < 4; i++) {
+            const x = (canvas.width / 4) * i;
+            for (let y = -160; y < canvas.height + 80; y += 80) ctx.fillRect(x - 3, y + lineOffset, 6, 40);
+        }
+
+        barrierTimer += dt; giftTimer += dt;
+        if (barrierTimer > currentConfig.barrierSpawnTime) { barriers.push(new Obstacle('barrier')); barrierTimer = 0; }
+        if (giftTimer > 2.0) { gifts.push(new Obstacle('gift')); giftTimer = 0; }
+
+        car.update(dt); car.draw();
+
+        for (let i = gifts.length - 1; i >= 0; i--) {
+            gifts[i].update(dt); gifts[i].draw();
+            if (checkCollision(car, gifts[i])) {
+                score++; displays.score.innerText = score; // Live update
+                for(let p=0; p<20; p++) particles.push(new Particle(gifts[i].x + 20, gifts[i].y + 20));
+                gifts.splice(i, 1);
+            } else if (!gifts[i].active) gifts.splice(i, 1);
+        }
+
+        for (let i = barriers.length - 1; i >= 0; i--) {
+            barriers[i].update(dt); barriers[i].draw();
+            if (checkCollision(car, barriers[i])) {
+                gameState = 'LOSE'; 
+                displays.final.innerText = `Final Score: ${score}`;
+                setOverlay(overlays.lose); return;
+            } else if (!barriers[i].active) barriers.splice(i, 1);
+        }
+
+        for (let i = particles.length - 1; i >= 0; i--) {
+            particles[i].update(dt); particles[i].draw();
+            if (particles[i].life <= 0) particles.splice(i, 1);
+        }
+
+        animationId = requestAnimationFrame(loop);
+    }
+    
+    startGame();
+</script>
+</body>
+</html>
